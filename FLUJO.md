@@ -21,27 +21,6 @@ Los diagramas están en **Mermaid**. Para verlos con mejor calidad y poder expor
 
 OmniSupport AI es una plataforma **event-driven** de soporte: el usuario crea un ticket, el sistema lo persiste, notifica por eventos y un servicio de IA analiza el contenido (RAG + LLM) para sugerir categoría y respuesta.
 
-```mermaid
-%%{init: {'theme':'base', 'themeVariables': { 'primaryColor':'#e1f5fe', 'primaryTextColor':'#01579b', 'primaryBorderColor':'#01579b', 'lineColor':'#0277bd', 'secondaryColor':'#fff3e0', 'tertiaryColor':'#e8f5e9' }}}%%
-flowchart LR
-    subgraph Entrada["🖥️ Entrada"]
-        U([Usuario / Frontend])
-    end
-    subgraph Flujo["⚡ Flujo"]
-        A[/1. Crear ticket/]
-        B[/2. Persistir + evento/]
-        C[/3. Consumir evento/]
-        D[/4. RAG + LLM/]
-        E[/5. Resultado/]
-    end
-    U --> A --> B --> C --> D --> E
-    style U fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
-    style A fill:#e8f5e9,stroke:#2e7d32
-    style B fill:#e8f5e9,stroke:#2e7d32
-    style C fill:#fff3e0,stroke:#ef6c00
-    style D fill:#fce4ec,stroke:#c2185b
-    style E fill:#e8eaf6,stroke:#3949ab,stroke-width:2px
-```
 ![Vista general del sistema](imagen/1.png)
 
 ---
@@ -50,64 +29,6 @@ flowchart LR
 
 Componentes y responsabilidades.
 
-```mermaid
-%%{init: {'theme':'base'}}%%
-flowchart TB
-    subgraph Cliente["🖥️ Capa de cliente"]
-        UI([Frontend Angular / API Client])
-    end
-
-    subgraph Entrada["🚪 Punto de entrada"]
-        GW[API Gateway :8080]
-    end
-
-    subgraph Servicios["⚙️ Microservicios"]
-        TS[ticket-service :8081]
-        AI[ai-analyzer-service :8082]
-    end
-
-    subgraph Mensajería["📨 Eventos"]
-        K[(Apache Kafka)]
-    end
-
-    subgraph Datos["💾 Persistencia"]
-        PG[(PostgreSQL)]
-        ORA[(Oracle 23ai)]
-    end
-
-    subgraph Externos["🌐 Servicios externos"]
-        LLM[(Ollama / OpenAI)]
-    end
-
-    subgraph Observabilidad["📊 Observabilidad"]
-        Prom[Prometheus]
-        Graf[Grafana]
-    end
-
-    UI -->|HTTP| GW
-    GW --> TS
-    GW --> AI
-    TS -->|JPA| PG
-    TS -->|publicar| K
-    K -->|consumir| AI
-    AI -->|Vector Search| ORA
-    AI -->|chat/embed| LLM
-    TS --> Prom
-    AI --> Prom
-    Prom --> Graf
-
-    classDef client fill:#e3f2fd,stroke:#1565c0
-    classDef gateway fill:#fff3e0,stroke:#ef6c00
-    classDef service fill:#e8f5e9,stroke:#2e7d32
-    classDef storage fill:#f3e5f5,stroke:#7b1fa2
-    classDef external fill:#ffecb3,stroke:#ffa000
-    classDef observability fill:#e0f2f1,stroke:#00897b
-    class UI client
-    class GW gateway
-    class TS,AI service
-    class PG,ORA,K,LLM storage
-    class Prom,Graf observability
-```
 ![Diagrama de arquitectura por capas](imagen/2.png)
 ---
 
@@ -115,50 +36,6 @@ flowchart TB
 
 Secuencia desde la petición HTTP hasta el análisis por IA.
 
-```mermaid
-sequenceDiagram
-    autonumber
-    box rgba(227, 242, 253, 0.5) Usuario
-    participant U as Usuario/Frontend
-    end
-    box rgba(255, 243, 224, 0.5) Gateway
-    participant GW as API Gateway
-    end
-    box rgba(232, 245, 233, 0.5) ticket-service
-    participant TS as ticket-service
-    end
-    box rgba(243, 229, 245, 0.5) Persistencia y mensajería
-    participant PG as PostgreSQL
-    participant K as Kafka
-    end
-    box rgba(232, 245, 233, 0.5) ai-analyzer
-    participant AI as ai-analyzer-service
-    end
-    box rgba(243, 229, 245, 0.5) RAG + LLM
-    participant ORA as Oracle 23ai
-    participant LLM as Ollama/LLM
-    end
-
-    U->>+GW: POST /api/tickets
-    GW->>+TS: Forward request
-    TS->>TS: CreateTicketUseCase.execute()
-    TS->>+PG: save(ticket) — PENDING
-    PG-->>-TS: ticket guardado
-    TS->>K: publish(ticket.created)
-    TS-->>-GW: 201 + ticket
-    GW-->>-U: Respuesta con ticket creado
-
-    Note over K,AI: ⏱️ Flujo asíncrono (consumer)
-
-    K->>+AI: mensaje ticket.created
-    AI->>AI: TicketCreatedConsumer.consume()
-    AI->>AI: AnalyzeTicketUseCase.execute(description)
-    AI->>+ORA: similaritySearch — RAG
-    ORA-->>-AI: documentos relevantes
-    AI->>+LLM: analyzeWithRag(description, context)
-    LLM-->>-AI: category + suggestedResponse
-    AI->>AI: log AnalysisResult
-```
 ![Flujo detallado paso a paso (secuencia)](imagen/3.png)
 ---
 
@@ -234,34 +111,6 @@ sequenceDiagram
 
 ## 6. Diagrama de flujo (decisión y errores)
 
-```mermaid
-flowchart TD
-    A([POST /api/tickets]) --> B{Validación OK?}
-    B -->|No| C[❌ 400 + mensajes validación]
-    B -->|Sí| D[CreateTicketUseCase]
-    D --> E[Guardar en PostgreSQL]
-    E --> F{Guardado OK?}
-    F -->|No| G[❌ 500 Error]
-    F -->|Sí| H[Publicar ticket.created]
-    H --> I[✅ 201 + ticket]
-    I --> J[Kafka entrega mensaje]
-    J --> K[Consumer recibe]
-    K --> L[RAG: similaritySearch]
-    L --> M[Construir prompt + LLM]
-    M --> N{LLM OK?}
-    N -->|No| O[Circuit Breaker fallback]
-    N -->|Sí| P[AnalysisResult]
-    O --> Q[Log / opcional persistir]
-    P --> Q
-
-    style A fill:#e3f2fd,stroke:#1565c0
-    style C fill:#ffebee,stroke:#c62828
-    style G fill:#ffebee,stroke:#c62828
-    style I fill:#e8f5e9,stroke:#2e7d32
-    style O fill:#fff3e0,stroke:#ef6c00
-    style P fill:#e8f5e9,stroke:#2e7d32
-    style Q fill:#e8eaf6,stroke:#3949ab
-```
 ![Diagrama de flujo (decisión y errores)](imagen/4.png)
 ---
 
@@ -310,3 +159,4 @@ flowchart TD
 | Cierre | Consumer | AnalysisResult | Log / (opcional) persistencia o nuevo evento |
 
 El flujo va **de la entrada del usuario** (crear ticket) **al proceso final** (análisis con IA) pasando por gateway, persistencia, eventos y RAG+LLM, con desacoplamiento, resiliencia y observabilidad considerados en el diseño y en las mejoras sugeridas.
+
