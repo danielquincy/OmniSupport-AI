@@ -1,0 +1,56 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: ai-analyzer-service
+  datasource:
+    url: jdbc:oracle:thin:@localhost:1521/FREEPDB1
+    username: system
+    password: OraclePass123
+    driver-class-name: oracle.jdbc.OracleDriver
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: ai-analyzer-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+  ai:
+    ollama:
+      base-url: http://localhost:11434
+      chat:
+        options:
+          model: llama3.2
+      embedding:
+        options:
+          model: nomic-embed-text
+    vectorstore:
+      oracle:
+        index-type: IVF
+        distance-type: COSINE
+        dimensions: 768
+        initialize-schema: true
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      llmService:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+        record-exceptions:
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
